@@ -1,5 +1,5 @@
 from langchain_openai import ChatOpenAI
-from app.python_rag_llm_base_public.app.config import settings  # Import cấu hình API từ file settings
+from app.config import settings  # Import cấu hình API từ file settings
 
 
 class LLM:

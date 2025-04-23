@@ -19,9 +19,9 @@ app.include_router(base.router)
 app.include_router(file_upload.router)
 app.include_router(chatbot.router)
 
-@app.route("/favicon.ico")
-def favicon():
-    return "", 204
+#@app.route("/favicon.ico")
+#def favicon():
+#    return "", 204
 
 @app.get("/")
 def read_root():

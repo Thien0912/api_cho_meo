@@ -1,88 +1,168 @@
-from fastapi import APIRouter
-from fastapi import FastAPI, File, UploadFile, Header, HTTPException, Request, Form  # noqa: E402, F401
-from fastapi.responses import FileResponse  # noqa: E402
-
+from fastapi import APIRouter, Request, UploadFile, File, Form, HTTPException
+from fastapi.responses import FileResponse
 from uuid import uuid4
+import os
+import shutil
+import json
+from datetime import datetime
 
 from app.models.file_upload import FileUpload
 from app.security.security import get_api_key
-from app.service.gmail import Gmail
 from app.config import settings
-from app.models.mail import Mail
 
-import os
-import shutil
-
-# Tạo router cho người dùng
+# Tạo router
 router = APIRouter(prefix="/upload-file", tags=["file-upload"])
 
+# Thư mục lưu file thường và mô hình AI
+DOWNLOAD_FOLDER = os.path.join(settings.DIR_ROOT, "utils", "download")
+MODEL_FOLDER = os.path.join(settings.DIR_ROOT, "utils", "models")
+CURRENT_MODEL_PATH = os.path.join(MODEL_FOLDER, "current_model.txt")
+CURRENT_LABEL_PATH = os.path.join(MODEL_FOLDER, "current_labels.txt")
+MODEL_ACCURACY_FILE = os.path.join(MODEL_FOLDER, "model_accuracies.json")
 
+# Đảm bảo thư mục tồn tại
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+os.makedirs(MODEL_FOLDER, exist_ok=True)
+
+# Đảm bảo file chứa độ chính xác tồn tại
+if not os.path.exists(MODEL_ACCURACY_FILE):
+    with open(MODEL_ACCURACY_FILE, "w") as f:
+        json.dump({}, f)
+
+# Hàm xử lý tên file an toàn
+def sanitize_filename(filename: str) -> str:
+    return filename.replace(" ", "_").replace("/", "_").replace("\\", "_")
+
+# Hàm lưu độ chính xác vào file
+def save_model_accuracy(filename: str, accuracy: float, upload_date: str):
+    with open(MODEL_ACCURACY_FILE, "r") as f:
+        model_accuracies = json.load(f)
+
+    model_accuracies[filename] = {"accuracy": accuracy, "upload_date": upload_date}
+
+    with open(MODEL_ACCURACY_FILE, "w") as f:
+        json.dump(model_accuracies, f)
+
+# Hàm tải lên file và lưu độ chính xác
 @router.post("/upload/", response_model=FileUpload)
 async def upload_file(
-    request: Request,  # Đối tượng Request để lấy thông tin từ header
-    file: UploadFile = File(...),  # Tệp được upload
-    api_key: str = get_api_key,  # Khóa API để xác thực
-    mail_to: str = Form(""),  # Địa chỉ email người nhận (nếu có)
-    mail_title: str = Form(""),  # Tiêu đề email (nếu có)
-    mail_content: str = Form(""),  # Nội dung email (nếu có)
+    request: Request,
+    file: UploadFile = File(...),
+    custom_filename: str = Form(...),
+    accuracy: float = Form(...),
+    labels_csv: UploadFile = File(None),  # File CSV chứa nhãn nếu có
+    api_key: str = get_api_key,
 ):
-    """
-    API để upload tệp và gửi email với liên kết tải xuống (nếu có).
-
-    Tham số:
-    - `file`: Tệp được upload cần lưu trữ.
-    - `api_key`: Khóa API dùng để xác thực yêu cầu.
-    - `mail_to`: Địa chỉ email người nhận (nếu có).
-    - `mail_title`: Tiêu đề email (nếu có).
-    - `mail_content`: Nội dung email (nếu có).
-
-    Trả về:
-    - `filename`: Tên tệp đã upload.
-    - `download_url`: URL để tải xuống tệp.
-    - `mail`: Địa chỉ email người nhận (nếu đã gửi email).
-
-    Nếu `mail_to` được cung cấp, email sẽ được gửi đến địa chỉ đó với liên kết tải xuống tệp.
-    """
     file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{uuid4()}{file_extension}"
-    folder_path = os.path.join(os.path.join(settings.DIR_ROOT, "utils","download"))
-    os.makedirs(folder_path) if not os.path.exists(folder_path) else folder_path
-    file_path = os.path.join(folder_path, unique_filename)
 
+    # Làm sạch tên file
+    safe_name = sanitize_filename(custom_filename)
+    if not safe_name.endswith(file_extension):
+        safe_name += file_extension
+
+    # Xác định đường dẫn lưu file
+    if file_extension == ".keras":
+        file_path = os.path.join(MODEL_FOLDER, safe_name)
+    else:
+        file_path = os.path.join(DOWNLOAD_FOLDER, safe_name)
+
+    # Ghi file
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    download_url = f"{router.prefix}/download/{unique_filename}"
+    # Nếu có file nhãn kèm theo thì lưu với tên tương ứng
+    if labels_csv:
+        label_path = os.path.join(MODEL_FOLDER, safe_name.replace(".keras", "_labels.csv"))
+        with open(label_path, "wb") as label_buffer:
+            shutil.copyfileobj(labels_csv.file, label_buffer)
 
-    if mail_to != "":
-        domain = request.headers.get("Host")
-        mail_content = mail_content + "\n" + f"url: {domain}{download_url}"
+    # Lấy ngày giờ upload hiện tại
+    upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        Gmail.send_email(
-            mail_to,
-            mail_title,
-            mail_content
-        )
+    # Lưu độ chính xác và ngày upload vào file
+    save_model_accuracy(safe_name, accuracy, upload_date)
 
+    return FileUpload(
+        filename=safe_name,
+        download_url=f"/upload-file/download/{safe_name}",
+        mail=None
+    )
 
-    return FileUpload(filename=file.filename, download_url=download_url, mail=mail_to)
+@router.get("/models/")
+def list_uploaded_models():
+    files = [f for f in os.listdir(MODEL_FOLDER) if f.endswith(".keras")]
+    with open(MODEL_ACCURACY_FILE, "r") as f:
+        model_accuracies = json.load(f)
+    models_with_accuracy = [
+        {
+            "filename": f,
+            "accuracy": model_accuracies.get(f, {}).get("accuracy", "N/A"),
+            "upload_date": model_accuracies.get(f, {}).get("upload_date", "N/A")
+        } for f in files
+    ]
+    return {"models": models_with_accuracy}
 
+@router.post("/models/select/")
+def select_model(filename: str = Form(...)):
+    model_path = os.path.join(MODEL_FOLDER, filename)
+    if not os.path.exists(model_path):
+        raise HTTPException(status_code=404, detail="Model not found")
 
-@router.get("/download/{filename}")
-async def download_file(filename: str):
-    """
-    API để tải xuống tệp.
+    with open(CURRENT_MODEL_PATH, "w") as f:
+        f.write(filename)
 
-    Tham số:
-    - `filename`: Tên tệp cần tải xuống.
+    label_path = filename.replace(".keras", "_labels.csv")
+    label_full_path = os.path.join(MODEL_FOLDER, label_path)
+    if os.path.exists(label_full_path):
+        with open(CURRENT_LABEL_PATH, "w") as f:
+            f.write(label_path)
 
-    Trả về:
-    - Nếu tệp tồn tại, trả về tệp dưới dạng phản hồi tải xuống.
-    - Nếu tệp không tồn tại, trả về lỗi 404 với thông báo "File not found".
-    """
-    file_path = os.path.join(os.path.join(settings.DIR_ROOT, "utils","download"), filename)
-    if os.path.exists(file_path):
-        return FileResponse(
-            path=file_path, filename=filename, media_type="application/octet-stream"
-        )
-    raise HTTPException(status_code=404, detail="File not found")
+    return {"message": f"Model {filename} và file nhãn tương ứng đã được chọn"}
+
+@router.get("/models/current/")
+def get_current_model():
+    current = {}
+    if os.path.exists(CURRENT_MODEL_PATH):
+        with open(CURRENT_MODEL_PATH, "r") as f:
+            current["model"] = f.read().strip()
+    if os.path.exists(CURRENT_LABEL_PATH):
+        with open(CURRENT_LABEL_PATH, "r") as f:
+            current["labels"] = f.read().strip()
+    return current
+
+@router.get("/models/{filename}/labels")
+def get_model_labels(filename: str):
+    label_path = os.path.join(MODEL_FOLDER, filename.replace(".keras", "_labels.csv"))
+    if not os.path.exists(label_path):
+        raise HTTPException(status_code=404, detail="Không tìm thấy file nhãn cho mô hình này")
+    return FileResponse(label_path, filename=os.path.basename(label_path))
+
+@router.delete("/models/{filename}")
+def delete_model(filename: str):
+    model_path = os.path.join(MODEL_FOLDER, filename)
+    label_path = os.path.join(MODEL_FOLDER, filename.replace(".keras", "_labels.csv"))
+
+    if not os.path.exists(model_path):
+        raise HTTPException(status_code=404, detail="Model không tồn tại")
+
+    with open(CURRENT_MODEL_PATH, "r") as f:
+        current_model = f.read().strip()
+
+    if current_model == filename:
+        with open(CURRENT_MODEL_PATH, "w") as f:
+            f.write("")
+        if os.path.exists(CURRENT_LABEL_PATH):
+            os.remove(CURRENT_LABEL_PATH)
+
+    os.remove(model_path)
+    if os.path.exists(label_path):
+        os.remove(label_path)
+
+    with open(MODEL_ACCURACY_FILE, "r") as f:
+        model_accuracies = json.load(f)
+    if filename in model_accuracies:
+        del model_accuracies[filename]
+    with open(MODEL_ACCURACY_FILE, "w") as f:
+        json.dump(model_accuracies, f)
+
+    return {"message": f"Đã xóa mô hình {filename} và file nhãn kèm theo (nếu có)"}
