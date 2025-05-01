@@ -6,6 +6,7 @@ import shutil
 from fastapi import Request
 import json
 from datetime import datetime
+import pytz
 
 from app.models.file_upload import FileUpload
 from app.security.security import get_api_key
@@ -30,6 +31,9 @@ os.makedirs(MODEL_FOLDER, exist_ok=True)
 if not os.path.exists(MODEL_ACCURACY_FILE):
     with open(MODEL_ACCURACY_FILE, "w") as f:
         json.dump({}, f)
+
+# Múi giờ Việt Nam
+VIETNAM_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
 
 # Hàm xử lý tên file an toàn
 def sanitize_filename(filename: str) -> str:
@@ -97,8 +101,8 @@ async def upload_file(
             with open(label_path, "wb") as label_buffer:
                 shutil.copyfileobj(labels_csv.file, label_buffer)
 
-        # Lấy ngày giờ upload hiện tại
-        upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Lấy ngày giờ upload hiện tại theo múi giờ Asia/Ho_Chi_Minh
+        upload_date = datetime.now(VIETNAM_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
         # Lưu độ chính xác và ngày upload vào file
         save_model_accuracy(safe_name, accuracy, upload_date)
@@ -115,7 +119,7 @@ async def upload_file(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi xử lý file: {str(e)}")
-    
+
 # Hàm tải lên tệp APK
 @router.post("/upload-apk/")
 async def upload_apk(
@@ -152,8 +156,8 @@ async def upload_apk(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Lấy ngày giờ upload
-    upload_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Lấy ngày giờ upload theo múi giờ Asia/Ho_Chi_Minh
+    upload_date = datetime.now(VIETNAM_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
     return {
         "custom_filename": custom_filename,
@@ -176,15 +180,14 @@ async def get_current_apk(api_key: str = get_api_key):
         if current_apk:
             apk_path = os.path.join(DOWNLOAD_FOLDER, current_apk)
             if os.path.exists(apk_path):
-                upload_date = datetime.fromtimestamp(os.path.getmtime(apk_path)).strftime("%Y-%m-%d %H:%M:%S")
+                upload_date = datetime.fromtimestamp(os.path.getmtime(apk_path)).astimezone(VIETNAM_TZ).strftime("%Y-%m-%d %H:%M:%S")
                 return {"apk": current_apk, "upload_date": upload_date}
     return {"apk": "", "upload_date": ""}
 
-# Hiển thị danh sách các tệp APK đã upload
 @router.get("/apks/")
 async def list_uploaded_apks():
     """
-    API để xem danh sách các tệsse APK đã upload.
+    API để xem danh sách các tệp APK đã upload.
 
     Trả về:
     - `apks`: Danh sách các tệp APK với tên tệp và ngày upload.
@@ -193,12 +196,11 @@ async def list_uploaded_apks():
     apks = [
         {
             "filename": f,
-            "upload_date": datetime.fromtimestamp(os.path.getmtime(os.path.join(DOWNLOAD_FOLDER, f))).strftime("%Y-%m-%d %H:%M:%S")
+            "upload_date": datetime.fromtimestamp(os.path.getmtime(os.path.join(DOWNLOAD_FOLDER, f))).astimezone(VIETNAM_TZ).strftime("%Y-%m-%d %H:%M:%S")
         } for f in files
     ]
     return {"apks": apks}
 
-# Chọn tệp APK để sử dụng
 @router.post("/apks/select/")
 async def select_apk(
     filename: str = Form(..., description="Tên tệp APK muốn sử dụng"),
@@ -224,7 +226,6 @@ async def select_apk(
 
 @router.get("/apks/current/download/")
 async def download_current_apk(api_key: str = None, request: Request = None):
-
     """
     API để tải về APK đang sử dụng.
 
@@ -326,6 +327,13 @@ def get_current_model():
     if os.path.exists(CURRENT_LABEL_PATH):
         with open(CURRENT_LABEL_PATH, "r") as f:
             current["labels"] = f.read().strip()
+    
+    # Thêm upload_date từ model_accuracies.json
+    if current.get("model"):
+        with open(MODEL_ACCURACY_FILE, "r") as f:
+            model_accuracies = json.load(f)
+        current["upload_date"] = model_accuracies.get(current["model"], {}).get("upload_date", "N/A")
+    
     return current
 
 @router.get("/models/{filename}/labels")
@@ -384,7 +392,6 @@ def delete_model(
 
     return {"message": f"Đã xóa mô hình {filename} và file nhãn kèm theo (nếu có)"}
 
-# Thêm router xóa APK
 @router.delete("/apks/{filename}")
 async def delete_apk(
     filename: str = Path(..., description="Tên tệp APK muốn xóa"),

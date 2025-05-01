@@ -44,3 +44,4 @@ pytest_cache/
 /utils*".env" 
 ".env" 
 "venv/" 
+"venv/" 
