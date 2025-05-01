@@ -1,14 +1,14 @@
-docker build -t api_chatbot .
+docker build -t sys_55010 .
 
-docker run -d --restart always -v /root/dir_api_chatbot:/_app_/utils/download --name api_chatbot -p 8888:60074 api_chatbot
+docker run -d --restart always -v /root/dir_sys_55010:/_app_/utils/download --name sys_55010 -p 55010:55010 sys_55010
 
 D:\Code\FASTAPI\API\Docker
 
-docker run -d --restart always -v D:\Code\FASTAPI\API\Docker\utils:/_app_/utils/ --name api_chatbot -p 8888:60074 api_chatbot
+docker run -d --restart always -v D:\Code\FASTAPI\API\Docker\utils:/_app_/utils/ --name sys_55010 -p 55010:55010 sys_55010
 
-docker save -o api_chatbot.tar api_chatbot
+docker save -o sys_55010.tar sys_55010
 
-docker load -i api_chatbot.tar
+docker load -i sys_55010.tar
 
-docker exec -it api_chatbot bash
+docker exec -it sys_55010 bash
 

@@ -1,7 +1,9 @@
-import subprocess
-import uvicorn
 from app.main import app
+from app.routers.config import update_env_from_llm_txt
+import uvicorn
 
-# Chạy ứng dụng FastAPI
+# Cập nhật .env từ llm.txt khi khởi động
+update_env_from_llm_txt()
+
 if __name__ == "__main__":
-    subprocess.run(["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "60074", "--workers", "2"])
+    uvicorn.run(app, host="0.0.0.0", port=55010, workers=1)

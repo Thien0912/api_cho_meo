@@ -6,38 +6,23 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Cập nhật, bật kho universe và cài đặt các gói hệ thống cần thiết
 RUN apt-get update && apt-get install -y \
-    software-properties-common && \
-    add-apt-repository universe && \
-    apt-get update && apt-get install -y \
-    python3 python3-pip git nano htop \
-    wget gnupg unzip \
-    fonts-liberation \
-    libappindicator3-1 \
-    libasound2 \
-    libatk-bridge2.0-0 \
-    libatk1.0-0 \
-    libcups2 \
-    libdbus-1-3 \
-    libgdk-pixbuf2.0-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    xdg-utils \
-    libu2f-udev \
-    libvulkan1 \
-    libxss1 \
-    libxtst6 \
-    libgbm1 \
-    && rm -rf /var/lib/apt/lists/*
-
-# Cài đặt Google Chrome Stable
-RUN wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    apt-get update && \
-    apt-get install -y ./google-chrome-stable_current_amd64.deb && \
-    rm google-chrome-stable_current_amd64.deb
+    python3 \
+    python3-pip \
+    python3-dev \
+    build-essential \
+    libatlas-base-dev \
+    libblas-dev \
+    liblapack-dev \
+    libpng-dev \
+    libfreetype6-dev \
+    libxml2-dev \
+    libxslt-dev \
+    libjpeg-dev \
+    zlib1g-dev \
+    git \
+    curl \
+    unzip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Thiết lập thư mục làm việc
 WORKDIR /_app_

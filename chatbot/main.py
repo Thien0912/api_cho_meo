@@ -12,11 +12,3 @@ model = tf.keras.models.load_model(MODEL_PATH)
 # Khởi tạo FastAPI
 app = FastAPI()
 
-# Định nghĩa request body để nhận ảnh từ frontend
-# Đường dẫn ảnh trên server hoặc URL
-
-# Chuyển ảnh từ đường dẫn sang định dạng mà mô hình có thể nhận diện
-
-
-# Định nghĩa endpoint để nhận diện giống chó/mèo
-

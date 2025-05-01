@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routers import base, chatbot, file_upload
+from app.routers import base, chatbot, file_upload, config
 from fastapi.middleware.cors import CORSMiddleware
 
 # Tạo instance của FastAPI
@@ -15,9 +15,9 @@ app.add_middleware(
 )
 
 # Include các router vào ứng dụng chính
-app.include_router(base.router)
 app.include_router(file_upload.router)
 app.include_router(chatbot.router)
+app.include_router(config.router)
 
 #@app.route("/favicon.ico")
 #def favicon():
